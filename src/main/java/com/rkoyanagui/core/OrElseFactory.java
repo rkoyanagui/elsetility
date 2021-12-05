@@ -285,8 +285,7 @@ public class OrElseFactory
    */
   public OrElseFactory atMost(final Duration timeout)
   {
-    final ConditionFactory conditionFactory =
-        this.conditionFactory.atMost(timeout);
+    final ConditionFactory conditionFactory = this.conditionFactory.atMost(timeout);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -298,8 +297,7 @@ public class OrElseFactory
    */
   public OrElseFactory during(final Duration timeout)
   {
-    final ConditionFactory conditionFactory =
-        this.conditionFactory.during(timeout);
+    final ConditionFactory conditionFactory = this.conditionFactory.during(timeout);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -324,8 +322,7 @@ public class OrElseFactory
    */
   public OrElseFactory alias(final String alias)
   {
-    final ConditionFactory conditionFactory =
-        this.conditionFactory.alias(alias);
+    final ConditionFactory conditionFactory = this.conditionFactory.alias(alias);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -338,8 +335,7 @@ public class OrElseFactory
    */
   public OrElseFactory atLeast(final Duration timeout)
   {
-    final ConditionFactory conditionFactory =
-        this.conditionFactory.atLeast(timeout);
+    final ConditionFactory conditionFactory = this.conditionFactory.atLeast(timeout);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -624,7 +620,7 @@ public class OrElseFactory
    */
   public OrElseFactory await(final String alias)
   {
-    final ConditionFactory conditionFactory = this.conditionFactory.alias(alias);
+    final ConditionFactory conditionFactory = this.conditionFactory.await(alias);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
