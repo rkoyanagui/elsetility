@@ -35,7 +35,6 @@ import org.hamcrest.Matcher;
  * <a href="https://github.com/awaitility/awaitility">Awaitility</a>. Adds some extra
  * functionality.
  */
-@SuppressWarnings("unused")
 public class OrElseFactory
 {
   protected final ConditionFactory conditionFactory;
@@ -44,7 +43,7 @@ public class OrElseFactory
   protected final Integer maxAttempts;
 
   /** The corrective action to take when a condition fails. */
-  protected final Runnable correctiveAction;
+  protected final Runnable orElseDo;
 
   /**
    * Instantiates a new condition factory.
@@ -54,12 +53,12 @@ public class OrElseFactory
    * @param pollInterval                the poll interval
    * @param pollDelay                   the poll delay
    * @param catchUncaughtExceptions     whether to catch uncaught exceptions
-   * @param exceptionIgnorer            a mechanism to ignore exceptions
+   * @param exceptionsIgnorer           a mechanism to ignore exceptions
    * @param conditionEvaluationListener the condition evaluation listener
    * @param executorLifecycle           the executor lifecycle
    * @param failFastCondition           the fail-fast condition
    * @param maxAttempts                 the maximum number of attempts
-   * @param correctiveAction            the corrective action to take when a condition fails
+   * @param orElseDo                    the corrective action to take when a condition fails
    */
   public OrElseFactory(
       final String alias,
@@ -67,35 +66,35 @@ public class OrElseFactory
       final PollInterval pollInterval,
       final Duration pollDelay,
       final boolean catchUncaughtExceptions,
-      final ExceptionIgnorer exceptionIgnorer,
+      final ExceptionIgnorer exceptionsIgnorer,
       final ConditionEvaluationListener conditionEvaluationListener,
       final ExecutorLifecycle executorLifecycle,
       final FailFastCondition failFastCondition,
       final Integer maxAttempts,
-      final Runnable correctiveAction)
+      final Runnable orElseDo)
   {
-    verifyParams(maxAttempts, correctiveAction);
+    verifyParams(maxAttempts, orElseDo);
     this.conditionFactory = new ConditionFactory(alias, timeoutConstraint, pollInterval, pollDelay,
-        catchUncaughtExceptions, exceptionIgnorer, conditionEvaluationListener, executorLifecycle,
+        catchUncaughtExceptions, exceptionsIgnorer, conditionEvaluationListener, executorLifecycle,
         failFastCondition);
     this.maxAttempts = maxAttempts;
-    this.correctiveAction = correctiveAction;
+    this.orElseDo = orElseDo;
   }
 
   public OrElseFactory(
       final ConditionFactory conditionFactory,
       final Integer maxAttempts,
-      final Runnable correctiveAction)
+      final Runnable orElseDo)
   {
-    verifyParams(maxAttempts, correctiveAction);
+    verifyParams(maxAttempts, orElseDo);
     this.conditionFactory = conditionFactory;
     this.maxAttempts = maxAttempts;
-    this.correctiveAction = correctiveAction;
+    this.orElseDo = orElseDo;
   }
 
   protected static void verifyParams(
       final Integer maxAttempts,
-      final Runnable correctiveAction)
+      final Runnable orElseDo)
   {
     final String msg = "'%s' cannot be null.";
     verifyNonNull(maxAttempts, String.format(msg, "maxAttempts"));
@@ -103,7 +102,7 @@ public class OrElseFactory
     {
       throw new IllegalArgumentException("'maxAttempts' cannot be less than 1 (one).");
     }
-    verifyNonNull(correctiveAction, String.format(msg, "correctiveAction"));
+    verifyNonNull(orElseDo, String.format(msg, "orElseDo"));
   }
 
   protected static <T> T verifyNonNull(final T obj, final String msg)
@@ -116,7 +115,7 @@ public class OrElseFactory
   }
 
   /**
-   * Sets a maximum number of attempts to evaluate the condition. If both {@code maxAttempts} and
+   * Sets a maximum number of attempts to evaluate the condition. If both {@code #maxAttempts} and
    * {@code timeout} have been set, then the wait ends whenever any of these two limits is reached.
    *
    * @param maxAttempts maximum number of attempts
@@ -124,132 +123,51 @@ public class OrElseFactory
    */
   public OrElseFactory maxNumOfAttempts(final Integer maxAttempts)
   {
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
-  }
-
-  /**
-   * Syntactic sugar.
-   *
-   * @see OrElseFactory#maxNumOfAttempts(Integer)
-   */
-  public OrElseFactory atMostThisManyTimes(final Integer maxAttempts)
-  {
-    return maxNumOfAttempts(maxAttempts);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
    * Sets the maximum number of attempts as unlimited. So the only limiting factor is defined by
-   * {@code timeout}. <p/> If both {@code maxAttempts} and {@code timeout} have been set as
-   * <i>unlimited</i>, then the wait will never terminate unless the condition evaluates to
-   * {@link Boolean#TRUE}, which is not advised, and could leave program execution hanging forever.
+   * {@code timeout}. <p/> If both {@code numOfAttempts} and {@code timeout} have been set as
+   * <i>unlimited</i>, then the wait will never terminate unless the condition is evaluated as
+   * {@link Boolean#TRUE}.
    *
    * @return the condition factory
    */
   public OrElseFactory unlimitedNumOfAttempts()
   {
-    return maxNumOfAttempts(Integer.MAX_VALUE);
+    return new OrElseFactory(conditionFactory, Integer.MAX_VALUE, orElseDo);
   }
 
   /**
-   * Syntactic sugar.
-   *
-   * @see OrElseFactory#unlimitedNumOfAttempts()
-   */
-  public OrElseFactory asManyTimesAsItTakes()
-  {
-    return unlimitedNumOfAttempts();
-  }
-
-  /**
-   * Sets what corrective action should be taken every time the condition fails. The default value
-   * is {@code () -> {}}, that is, "do nothing".
+   * Sets what alternative or corrective action should be taken every time the condition fails. The
+   * default value is {@code () -> {}}, that is, "do nothing".
    * <p>
-   * It only makes sense to perform a corrective action if a new attempt is to be made. For this
-   * reason, if the condition fails and it happens to be the last iteration (meaning either {@code
-   * maxAttempts} or {@code timeout} has been reached), then, after this last attempt, the {@code
-   * correctiveAction} is not taken.
+   * If the condition fails and it happens to be the last iteration (meaning either {@code
+   * maxAttempts} or {@code timeout} has been reached), then, after this last attempt, the
+   * corrective {@code orElseDo} action is not taken.
    * <p>
    * Also, if {@code maxAttempts} is set to {@code 1}, that is, the condition should be tested only
-   * once, then the {@code correctiveAction} is not taken.
-   * <p>
-   * Example using Java 7 Runnable:
-   * <pre>
-   * {@code
-   *   await().correctiveAction(new Runnable() {
-   *     public void run() {
-   *       addBacon();
-   *     }
-   *   })
-   *   .until(() -> eatSalad(), is(delicious()));
-   * }
-   * </pre>
+   * once, then the corrective {@code orElseDo} action is not taken.
    * <p>
    * Example using Java 8 lambda expressions:
    * <pre>
    * {@code
    * await()
-   *   .correctiveAction(() -> addBacon())
-   *   .until(() -> eatSalad(), is(delicious()));
+   *   .orElseDo(() -> pickLettuceFromBowl())
+   *   .until(() -> eatLettuce(), is(delicious()));
    * }
    * </pre>
    *
-   * @param correctiveAction an action to be taken every time the condition fails
+   * @param orElseDo an action to be taken every time the condition fails
    * @return the condition factory
    */
-  public OrElseFactory correctiveAction(final Runnable correctiveAction)
+  public OrElseFactory orElseDo(final Runnable orElseDo)
   {
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
-  /**
-   * Syntactic sugar.
-   *
-   * @see OrElseFactory#correctiveAction(Runnable)
-   */
-  public OrElseFactory orElseDo(final Runnable correctiveAction)
-  {
-    return correctiveAction(correctiveAction);
-  }
-
-  /**
-   * Syntactic sugar.
-   *
-   * @see OrElseFactory#correctiveAction(Runnable)
-   */
-  public OrElseFactory ifItFailsThenDo(final Runnable correctiveAction)
-  {
-    return correctiveAction(correctiveAction);
-  }
-
-  /**
-   * Sets {@code correctiveAction} to "do nothing".
-   *
-   * @see OrElseFactory#correctiveAction(Runnable)
-   */
-  public OrElseFactory noCorrectiveAction()
-  {
-    return correctiveAction(() -> {});
-  }
-
-  /**
-   * Syntactic sugar.
-   *
-   * @see OrElseFactory#noCorrectiveAction()
-   */
-  public OrElseFactory orElseDoNothing()
-  {
-    return correctiveAction(() -> {});
-  }
-
-  /**
-   * Syntactic sugar.
-   *
-   * @see OrElseFactory#noCorrectiveAction()
-   */
-  public OrElseFactory ifItFailsThenDoNothing()
-  {
-    return correctiveAction(() -> {});
-  }
+  // TODO Add syntactic sugar methods for 'orElseDo'.
 
   /**
    * Handle condition evaluation results each time evaluation of a condition occurs. Works only with
@@ -263,7 +181,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.conditionEvaluationListener(conditionEvaluationListener);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -287,7 +205,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.atMost(timeout);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -300,7 +218,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.during(timeout);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -326,7 +244,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.alias(alias);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -340,7 +258,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.atLeast(timeout);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -398,7 +316,7 @@ public class OrElseFactory
   public OrElseFactory forever()
   {
     final ConditionFactory conditionFactory = this.conditionFactory.forever();
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -417,7 +335,7 @@ public class OrElseFactory
   public OrElseFactory pollInterval(final Duration pollInterval)
   {
     final ConditionFactory conditionFactory = this.conditionFactory.pollInterval(pollInterval);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -443,7 +361,7 @@ public class OrElseFactory
   public OrElseFactory pollDelay(final long delay, final TimeUnit unit)
   {
     final ConditionFactory conditionFactory = this.conditionFactory.pollDelay(delay, unit);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -456,7 +374,7 @@ public class OrElseFactory
   public OrElseFactory pollDelay(final Duration pollDelay)
   {
     final ConditionFactory conditionFactory = this.conditionFactory.pollDelay(pollDelay);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -490,13 +408,13 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.pollInterval(pollInterval, unit);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   public OrElseFactory pollInterval(final PollInterval pollInterval)
   {
     final ConditionFactory conditionFactory = this.conditionFactory.pollInterval(pollInterval);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -510,7 +428,7 @@ public class OrElseFactory
   public OrElseFactory catchUncaughtExceptions()
   {
     final ConditionFactory conditionFactory = this.conditionFactory.catchUncaughtExceptions();
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -527,7 +445,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.ignoreExceptionsInstanceOf(exceptionType);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -544,7 +462,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.ignoreException(exceptionType);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -584,7 +502,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.ignoreExceptionsMatching(matcher);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -599,7 +517,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.ignoreExceptionsMatching(predicate);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -625,7 +543,7 @@ public class OrElseFactory
   public OrElseFactory await(final String alias)
   {
     final ConditionFactory conditionFactory = this.conditionFactory.alias(alias);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -673,27 +591,15 @@ public class OrElseFactory
   }
 
   /**
-   * A method to increase the readability of the Awaitility DSL. It simply returns the same
-   * condition factory instance.
-   *
-   * @return the condition factory
-   */
-  public OrElseFactory but()
-  {
-    return this;
-  }
-
-  /**
    * Don't catch uncaught exceptions in other threads. This will <i>not</i> make the await statement
    * fail if exceptions occur in other threads.
    *
    * @return the condition factory
    */
-  @SuppressWarnings("SpellCheckingInspection")
   public OrElseFactory dontCatchUncaughtExceptions()
   {
     final ConditionFactory conditionFactory = this.conditionFactory.dontCatchUncaughtExceptions();
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -710,7 +616,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.pollExecutorService(executorService);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -726,7 +632,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.pollThread(threadSupplier);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -735,12 +641,11 @@ public class OrElseFactory
    * forever (or a long time) since Awaitility cannot interrupt the thread when it's using the same
    * thread as the test. For safety you should always combine tests using this feature with a test
    * framework specific timeout, for example in JUnit:
-   * <pre>{@code
+   * <pre>
    * @Test(timeout = 2000L)
-   * void myTest() {
-   *   Awaitility.pollInSameThread();
-   *   await().forever().until(...);
-   * }
+   * public void myTest() {
+   *     Awaitility.pollInSameThread();
+   *     await().forever().until(...);
    * }
    * </pre>
    *
@@ -749,7 +654,7 @@ public class OrElseFactory
   public OrElseFactory pollInSameThread()
   {
     final ConditionFactory conditionFactory = this.conditionFactory.pollInSameThread();
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -765,7 +670,7 @@ public class OrElseFactory
   public OrElseFactory failFast(final Callable<Boolean> failFastCondition)
   {
     final ConditionFactory conditionFactory = this.conditionFactory.failFast(failFastCondition);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -785,7 +690,7 @@ public class OrElseFactory
   {
     final ConditionFactory conditionFactory =
         this.conditionFactory.failFast(failFastFailureReason, failFastCondition);
-    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, orElseDo);
   }
 
   /**
@@ -827,7 +732,7 @@ public class OrElseFactory
     verifyNonNull(matcher, "'matcher' cannot be null.");
     final LongAdder counter = new LongAdder();
     final Callable<T> wrappedSupplier =
-        CallableWrapper.wrap(supplier, correctiveAction, counter, maxAttempts);
+        CallableWrapper.wrap(supplier, orElseDo, counter, maxAttempts);
     return this.conditionFactory.until(wrappedSupplier, matcher);
   }
 
@@ -849,7 +754,7 @@ public class OrElseFactory
     verifyNonNull(predicate, "'predicate' cannot be null.");
     final LongAdder counter = new LongAdder();
     final Callable<T> wrappedSupplier =
-        CallableWrapper.wrap(supplier, correctiveAction, counter, maxAttempts);
+        CallableWrapper.wrap(supplier, orElseDo, counter, maxAttempts);
     return this.conditionFactory.until(wrappedSupplier, predicate);
   }
 
@@ -906,7 +811,7 @@ public class OrElseFactory
     verifyNonNull(assertion, "'assertion' cannot be null.");
     final LongAdder counter = new LongAdder();
     final ThrowingRunnable wrappedAssertion =
-        AssertionWrapper.wrap(assertion, correctiveAction, counter, maxAttempts);
+        AssertionWrapper.wrap(assertion, orElseDo, counter, maxAttempts);
     this.conditionFactory.untilAsserted(wrappedAssertion);
   }
 
@@ -1124,7 +1029,7 @@ public class OrElseFactory
     verifyNonNull(conditionEvaluator, "'conditionEvaluator' cannot be null.");
     final LongAdder counter = new LongAdder();
     final Callable<Boolean> wrappedCondition =
-        CallableWrapper.wrap(conditionEvaluator, correctiveAction, counter, maxAttempts);
+        CallableWrapper.wrap(conditionEvaluator, orElseDo, counter, maxAttempts);
     this.conditionFactory.until(wrappedCondition);
   }
 }

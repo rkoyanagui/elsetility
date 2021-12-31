@@ -21,28 +21,28 @@ class ElsetilityTest
   @Test
   void succeed()
   {
-    final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
+    final OrElseFactory factory = Elsetility.await().timeout(ofSeconds(1));
     assertDoesNotThrow(() -> factory.until(() -> true));
   }
 
   @Test
   void fail()
   {
-    final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
+    final OrElseFactory factory = Elsetility.await().timeout(ofSeconds(1));
     assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> false));
   }
 
   @Test
   void match()
   {
-    final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
+    final OrElseFactory factory = Elsetility.await().timeout(ofSeconds(1));
     assertDoesNotThrow(() -> factory.until(() -> "", emptyString()));
   }
 
   @Test
   void mismatch()
   {
-    final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
+    final OrElseFactory factory = Elsetility.await().timeout(ofSeconds(1));
     assertThrows(ConditionTimeoutException.class,
         () -> factory.until(() -> "", not(emptyString())));
   }
@@ -50,14 +50,14 @@ class ElsetilityTest
   @Test
   void succeedPredicate()
   {
-    final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
+    final OrElseFactory factory = Elsetility.await().timeout(ofSeconds(1));
     assertDoesNotThrow(() -> factory.until(() -> "", s -> s.isEmpty()));
   }
 
   @Test
   void failPredicate()
   {
-    final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
+    final OrElseFactory factory = Elsetility.await().timeout(ofSeconds(1));
     assertThrows(ConditionTimeoutException.class,
         () -> factory.until(() -> "", s -> !s.isEmpty()));
   }
@@ -67,9 +67,9 @@ class ElsetilityTest
   {
     final AtomicInteger i = new AtomicInteger();
     final OrElseFactory factory = Elsetility.await()
-        .forever()
-        .but().atMostThisManyTimes(3)
-        .and().with().correctiveAction(() -> i.incrementAndGet());
+        .timeout(ofSeconds(10))
+        .maxNumOfAttempts(3)
+        .orElseDo(() -> i.incrementAndGet());
     assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> false));
     assertThat(i.get(), is(equalTo(2)));
   }
@@ -79,8 +79,9 @@ class ElsetilityTest
   {
     final AtomicInteger i = new AtomicInteger();
     final OrElseFactory factory = Elsetility.await()
-        .given().maxNumOfAttempts(1)
-        .and().correctiveAction(() -> i.incrementAndGet());
+        .timeout(ofSeconds(10))
+        .maxNumOfAttempts(1)
+        .orElseDo(() -> i.incrementAndGet());
     assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> false));
     assertThat(i.get(), is(equalTo(0)));
   }
@@ -90,9 +91,9 @@ class ElsetilityTest
   {
     final AtomicInteger i = new AtomicInteger();
     final OrElseFactory factory = Elsetility.await()
-        .given().unlimitedNumOfAttempts()
-        .but().timeout(ofSeconds(1))
-        .and().correctiveAction(() -> i.incrementAndGet());
+        .timeout(ofSeconds(5))
+        .maxNumOfAttempts(10)
+        .orElseDo(() -> i.incrementAndGet());
     assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> false));
     assertThat(i.get(), is(greaterThan(0)));
   }
@@ -101,8 +102,9 @@ class ElsetilityTest
   void ignoreExceptionInSupplier()
   {
     final OrElseFactory factory = Elsetility.await()
-        .given().maxNumOfAttempts(1)
-        .and().ignoreExceptionsMatching(instanceOf(ArithmeticException.class));
+        .maxNumOfAttempts(1)
+        .timeout(ofSeconds(10))
+        .ignoreExceptionsMatching(instanceOf(ArithmeticException.class));
     assertThrows(ConditionTimeoutException.class,
         () -> factory.until(() -> 1 / 0, is(equalTo(0))));
   }
@@ -110,7 +112,7 @@ class ElsetilityTest
   @Test
   void doNotIgnoreExceptionInSupplier()
   {
-    final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
+    final OrElseFactory factory = Elsetility.await().maxNumOfAttempts(1);
     assertThrows(ArithmeticException.class,
         () -> factory.until(() -> 1 / 0, is(equalTo(0))));
   }
@@ -119,9 +121,8 @@ class ElsetilityTest
   void ignoreExceptionInOrElseDo()
   {
     final OrElseFactory factory = Elsetility.await()
-        .given().maxNumOfAttempts(2)
-        .and().ignoreExceptionsMatching(instanceOf(ArithmeticException.class))
-        .with().correctiveAction(() ->
+        .ignoreExceptionsMatching(instanceOf(ArithmeticException.class))
+        .orElseDo(() ->
         {
           int i = 1 / 0;
         });
@@ -133,8 +134,7 @@ class ElsetilityTest
   void doNotIgnoreExceptionInOrElseDo()
   {
     final OrElseFactory factory = Elsetility.await()
-        .given().maxNumOfAttempts(2)
-        .but().ifItFailsThenDo(() ->
+        .orElseDo(() ->
         {
           int i = 1 / 0;
         });
@@ -146,15 +146,16 @@ class ElsetilityTest
   void ignoreExceptionInCondition()
   {
     final OrElseFactory factory = Elsetility.await()
-        .given().maxNumOfAttempts(1)
-        .and().ignoreExceptionsMatching(instanceOf(ArithmeticException.class));
+        .maxNumOfAttempts(1)
+        .timeout(ofSeconds(10))
+        .ignoreExceptionsMatching(instanceOf(ArithmeticException.class));
     assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> 1 / 0 == 0));
   }
 
   @Test
   void doNotIgnoreExceptionInCondition()
   {
-    final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
+    final OrElseFactory factory = Elsetility.await();
     assertThrows(ArithmeticException.class, () -> factory.until(() -> 1 / 0 == 0));
   }
 }
