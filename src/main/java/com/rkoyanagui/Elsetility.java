@@ -1,23 +1,27 @@
 package com.rkoyanagui;
 
+import static java.time.Duration.ofMillis;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.instanceOf;
 
 import com.rkoyanagui.core.OrElseFactory;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.awaitility.Awaitility;
 import org.awaitility.constraint.AtMostWaitConstraint;
 import org.awaitility.constraint.WaitConstraint;
 import org.awaitility.core.ConditionEvaluationListener;
-import org.awaitility.core.ConditionFactory;
 import org.awaitility.core.DurationFactory;
 import org.awaitility.core.ExceptionIgnorer;
 import org.awaitility.core.ExecutorLifecycle;
@@ -39,19 +43,16 @@ public class Elsetility
       new FixedPollInterval(ONE_HUNDRED_MILLISECONDS);
 
   /** The default poll interval (initially, 100 ms). */
-  protected static ThreadLocal<PollInterval> defaultPollInterval =
-      ThreadLocal.withInitial(() -> DEFAULT_POLL_INTERVAL);
+  protected static volatile PollInterval defaultPollInterval = DEFAULT_POLL_INTERVAL;
 
   /** The default wait constraint (initially, 10 seconds). */
-  protected static ThreadLocal<WaitConstraint> defaultWaitConstraint =
-      ThreadLocal.withInitial(() -> AtMostWaitConstraint.TEN_SECONDS);
+  protected static volatile WaitConstraint defaultWaitConstraint = AtMostWaitConstraint.TEN_SECONDS;
 
   /**
    * The default poll delay (initially, {@code null}, meaning it will be the same duration as the
    * poll interval).
    */
-  protected static ThreadLocal<Duration> defaultPollDelay =
-      ThreadLocal.withInitial(() -> DEFAULT_POLL_DELAY);
+  protected static volatile Duration defaultPollDelay = DEFAULT_POLL_DELAY;
 
   /** Default answer to the question 'Should catch all uncaught exceptions?' (initially, yes). */
   protected static volatile boolean defaultCatchUncaughtExceptions = true;
@@ -60,28 +61,23 @@ public class Elsetility
    * Default answer to the question 'Should ignore caught exceptions?' (initially, no, ignore
    * none).
    */
-  protected static ThreadLocal<ExceptionIgnorer> defaultExceptionIgnorer =
-      ThreadLocal.withInitial(() -> new PredicateExceptionIgnorer(e -> false));
+  protected static volatile ExceptionIgnorer defaultExceptionIgnorer = new PredicateExceptionIgnorer(
+      e -> false);
 
-  /** Default listener of condition evaluation results (initially, {@code null}). */
-  protected static ThreadLocal<ConditionEvaluationListener<?>> defaultConditionEvaluationListener =
-      ThreadLocal.withInitial(() -> null);
+  /** Default listener of condition evaluation results. */
+  protected static volatile ConditionEvaluationListener defaultConditionEvaluationListener = null;
 
-  /** Default condition evaluation executor service (initially, {@code null}). */
-  protected static ThreadLocal<ExecutorLifecycle> defaultExecutorLifecycle =
-      ThreadLocal.withInitial(() -> null);
+  /** Default condition evaluation executor service. */
+  protected static volatile ExecutorLifecycle defaultExecutorLifecycle = null;
 
   /** Default fail-fast condition (initially, {@code null}). */
-  protected static ThreadLocal<FailFastCondition> defaultFailFastCondition =
-      ThreadLocal.withInitial(() -> null);
+  protected static volatile FailFastCondition defaultFailFastCondition = null;
 
   /** Default maximum number of attempts (initially, {@link Integer#MAX_VALUE}). */
-  protected static ThreadLocal<Integer> defaultMaxAttempts =
-      ThreadLocal.withInitial(() -> Integer.MAX_VALUE);
+  protected static volatile Integer defaultMaxAttempts = Integer.MAX_VALUE;
 
-  /** Default corrective action (initially, "do nothing"). */
-  protected static ThreadLocal<Runnable> defaultOrElseDo =
-      ThreadLocal.withInitial(() -> () -> {});
+  /** Default corrective action. */
+  protected static volatile Runnable defaultOrElseDo = () -> {};
 
   protected Elsetility()
   {
@@ -89,17 +85,29 @@ public class Elsetility
   }
 
   /**
-   * Prevents the continuation of a program's execution for a fixed duration.
+   * Holds a program's execution for a fixed number of seconds.
    *
-   * @param duration duration to wait
+   * @param seconds number of seconds to wait
    */
-  public static void await(Duration duration)
+  public static void await(final long seconds)
   {
+    final long pollDelay = 0L;
+    final long pollInterval = 1_000L;
+    final LongAdder counter = new LongAdder();
+    final ScheduledFuture<?> scheduledFuture = Executors.newSingleThreadScheduledExecutor()
+        .scheduleAtFixedRate(
+            () -> counter.increment(),
+            pollDelay,
+            pollInterval,
+            TimeUnit.MILLISECONDS);
+
     Awaitility.await()
-        .given()
-        .pollDelay(duration)
+        .pollDelay(ofMillis(pollDelay))
+        .pollInterval(ofMillis(pollInterval))
         .forever()
-        .until(() -> true);
+        .untilAdder(counter, greaterThan(seconds));
+
+    scheduledFuture.cancel(true);
   }
 
   /**
@@ -109,7 +117,7 @@ public class Elsetility
    */
   public static OrElseFactory await()
   {
-    return await((String) null);
+    return await(null);
   }
 
   /**
@@ -122,12 +130,9 @@ public class Elsetility
    */
   public static OrElseFactory await(final String alias)
   {
-    final ConditionFactory conditionFactory = new ConditionFactory(alias,
-        defaultWaitConstraint.get(), defaultPollInterval.get(), defaultPollDelay.get(),
-        defaultCatchUncaughtExceptions, defaultExceptionIgnorer.get(),
-        defaultConditionEvaluationListener.get(), defaultExecutorLifecycle.get(),
-        defaultFailFastCondition.get());
-    return new OrElseFactory(conditionFactory, defaultMaxAttempts.get(), defaultOrElseDo.get());
+    return new OrElseFactory(alias, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
+        defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
+        defaultExecutorLifecycle, defaultFailFastCondition, defaultMaxAttempts, defaultOrElseDo);
   }
 
   /**
@@ -157,7 +162,7 @@ public class Elsetility
    */
   public static void ignoreExceptionsByDefault()
   {
-    defaultExceptionIgnorer.set(new PredicateExceptionIgnorer(e -> true));
+    defaultExceptionIgnorer = new PredicateExceptionIgnorer(e -> true);
   }
 
   /**
@@ -167,9 +172,8 @@ public class Elsetility
    */
   public static void ignoreExceptionByDefault(final Class<? extends Throwable> exceptionType)
   {
-    defaultExceptionIgnorer.set(
-        new PredicateExceptionIgnorer(e -> e.getClass().equals(exceptionType))
-    );
+    defaultExceptionIgnorer = new PredicateExceptionIgnorer(
+        e -> e.getClass().equals(exceptionType));
   }
 
   /**
@@ -180,7 +184,7 @@ public class Elsetility
    */
   public static void ignoreExceptionsByDefaultMatching(final Predicate<? super Throwable> predicate)
   {
-    defaultExceptionIgnorer.set(new PredicateExceptionIgnorer(predicate));
+    defaultExceptionIgnorer = new PredicateExceptionIgnorer(predicate);
   }
 
   /**
@@ -191,22 +195,15 @@ public class Elsetility
    */
   public static void ignoreExceptionsByDefaultMatching(final Matcher<? super Throwable> matcher)
   {
-    defaultExceptionIgnorer.set(new HamcrestExceptionIgnorer(matcher));
+    defaultExceptionIgnorer = new HamcrestExceptionIgnorer(matcher);
   }
 
-  /**
-   * Creates a {@link org.hamcrest.Matcher} that matches when an object {@code o} is an instance of
-   * (meaning, is a subclass of, or implements an interface of) any of the given classes.
-   *
-   * @param xs  expected superclasses or superinterfaces
-   * @param <T> the type of the superclasses or superinterfaces
-   * @return a {@link org.hamcrest.Matcher}
-   */
-  @SafeVarargs // Creating a stream from an array is safe
-  public static <T> Matcher<T> instanceOfAnyOf(final Class<? extends T>... xs)
+  // TODO javadoc
+  public static <T> Matcher<? super T> instanceOfAnyOf(
+      final Collection<Class<? extends T>> xs)
   {
     return anyOf(
-        Stream.of(xs)
+        xs.stream()
             .map(x -> instanceOf(x))
             .collect(Collectors.toList())
     );
@@ -218,23 +215,20 @@ public class Elsetility
    * forever (or a long time) since Awaitility cannot interrupt the thread when using the same
    * thread as the test. For safety you should always combine tests using this feature with a test
    * framework specific timeout, for example in JUnit:
-   * <pre>{@code
+   * <pre>
    * @Test(timeout = 2000L)
    * public void myTest() {
    *     Awaitility.pollInSameThread();
    *     await().forever().until(...);
    * }
-   * }</pre>
+   * </pre>
    *
    * @since 3.0.0
    */
   public static void pollInSameThread()
   {
-    defaultExecutorLifecycle.set(
-        ExecutorLifecycle.withNormalCleanupBehavior(
-            () -> InternalExecutorServiceFactory.sameThreadExecutorService()
-        )
-    );
+    defaultExecutorLifecycle = ExecutorLifecycle.withNormalCleanupBehavior(
+        InternalExecutorServiceFactory::sameThreadExecutorService);
   }
 
   /**
@@ -248,7 +242,7 @@ public class Elsetility
    */
   public static void pollExecutorService(final ExecutorService executorService)
   {
-    defaultExecutorLifecycle.set(ExecutorLifecycle.withoutCleanup(executorService));
+    defaultExecutorLifecycle = ExecutorLifecycle.withoutCleanup(executorService);
   }
 
   /**
@@ -262,11 +256,8 @@ public class Elsetility
    */
   public static void pollThread(final Function<Runnable, Thread> threadSupplier)
   {
-    defaultExecutorLifecycle.set(
-        ExecutorLifecycle.withNormalCleanupBehavior(
-            () -> InternalExecutorServiceFactory.create(threadSupplier)
-        )
-    );
+    defaultExecutorLifecycle = ExecutorLifecycle.withNormalCleanupBehavior(
+        () -> InternalExecutorServiceFactory.create(threadSupplier));
   }
 
   /**
@@ -285,14 +276,14 @@ public class Elsetility
    */
   public static void reset()
   {
-    defaultPollInterval.set(DEFAULT_POLL_INTERVAL);
-    defaultPollDelay.set(DEFAULT_POLL_DELAY);
-    defaultWaitConstraint.set(AtMostWaitConstraint.TEN_SECONDS);
+    defaultPollInterval = DEFAULT_POLL_INTERVAL;
+    defaultPollDelay = DEFAULT_POLL_DELAY;
+    defaultWaitConstraint = AtMostWaitConstraint.TEN_SECONDS;
     defaultCatchUncaughtExceptions = true;
-    defaultConditionEvaluationListener.remove();
-    defaultExecutorLifecycle.remove();
-    defaultExceptionIgnorer.set(new PredicateExceptionIgnorer(e -> false));
-    defaultFailFastCondition.remove();
+    defaultConditionEvaluationListener = null;
+    defaultExecutorLifecycle = null;
+    defaultExceptionIgnorer = new PredicateExceptionIgnorer(e -> false);
+    defaultFailFastCondition = null;
     Thread.setDefaultUncaughtExceptionHandler(null);
   }
 
@@ -304,12 +295,9 @@ public class Elsetility
    */
   public static OrElseFactory catchUncaughtExceptions()
   {
-    final ConditionFactory conditionFactory = new ConditionFactory(null,
-        defaultWaitConstraint.get(), defaultPollInterval.get(), defaultPollDelay.get(),
-        true, defaultExceptionIgnorer.get(),
-        defaultConditionEvaluationListener.get(), defaultExecutorLifecycle.get(),
-        defaultFailFastCondition.get());
-    return new OrElseFactory(conditionFactory, defaultMaxAttempts.get(), defaultOrElseDo.get());
+    return new OrElseFactory(null, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
+        defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
+        defaultExecutorLifecycle, defaultFailFastCondition, defaultMaxAttempts, defaultOrElseDo);
   }
 
   /**
@@ -320,12 +308,9 @@ public class Elsetility
    */
   public static OrElseFactory dontCatchUncaughtExceptions()
   {
-    final ConditionFactory conditionFactory = new ConditionFactory(null,
-        defaultWaitConstraint.get(), defaultPollInterval.get(), defaultPollDelay.get(),
-        false, defaultExceptionIgnorer.get(),
-        defaultConditionEvaluationListener.get(), defaultExecutorLifecycle.get(),
-        defaultFailFastCondition.get());
-    return new OrElseFactory(conditionFactory, defaultMaxAttempts.get(), defaultOrElseDo.get());
+    return new OrElseFactory(null, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
+        false, defaultExceptionIgnorer, defaultConditionEvaluationListener,
+        defaultExecutorLifecycle, defaultFailFastCondition, defaultMaxAttempts, defaultOrElseDo);
   }
 
   /**
@@ -339,12 +324,9 @@ public class Elsetility
    */
   public static OrElseFactory with()
   {
-    final ConditionFactory conditionFactory = new ConditionFactory(null,
-        defaultWaitConstraint.get(), defaultPollInterval.get(), defaultPollDelay.get(),
-        defaultCatchUncaughtExceptions, defaultExceptionIgnorer.get(),
-        defaultConditionEvaluationListener.get(), defaultExecutorLifecycle.get(),
-        defaultFailFastCondition.get());
-    return new OrElseFactory(conditionFactory, defaultMaxAttempts.get(), defaultOrElseDo.get());
+    return new OrElseFactory(null, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
+        defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
+        defaultExecutorLifecycle, defaultFailFastCondition, defaultMaxAttempts, defaultOrElseDo);
   }
 
   /**
@@ -358,7 +340,9 @@ public class Elsetility
    */
   public static OrElseFactory given()
   {
-    return with();
+    return new OrElseFactory(null, defaultWaitConstraint, defaultPollInterval, defaultPollDelay,
+        defaultCatchUncaughtExceptions, defaultExceptionIgnorer, defaultConditionEvaluationListener,
+        defaultExecutorLifecycle, defaultFailFastCondition, defaultMaxAttempts, defaultOrElseDo);
   }
 
   /**
@@ -369,12 +353,10 @@ public class Elsetility
    */
   public static OrElseFactory waitAtMost(final Duration timeout)
   {
-    final ConditionFactory conditionFactory = new ConditionFactory(null,
-        defaultWaitConstraint.get().withMaxWaitTime(timeout), defaultPollInterval.get(),
-        defaultPollDelay.get(), defaultCatchUncaughtExceptions, defaultExceptionIgnorer.get(),
-        defaultConditionEvaluationListener.get(), defaultExecutorLifecycle.get(),
-        defaultFailFastCondition.get());
-    return new OrElseFactory(conditionFactory, defaultMaxAttempts.get(), defaultOrElseDo.get());
+    return new OrElseFactory(null, defaultWaitConstraint.withMaxWaitTime(timeout),
+        defaultPollInterval, defaultPollDelay, defaultCatchUncaughtExceptions,
+        defaultExceptionIgnorer, defaultConditionEvaluationListener, defaultExecutorLifecycle,
+        defaultFailFastCondition, defaultMaxAttempts, defaultOrElseDo);
   }
 
   /**
@@ -386,12 +368,11 @@ public class Elsetility
    */
   public static OrElseFactory waitAtMost(final long value, final TimeUnit unit)
   {
-    final ConditionFactory conditionFactory = new ConditionFactory(null,
-        defaultWaitConstraint.get().withMaxWaitTime(DurationFactory.of(value, unit)),
-        defaultPollInterval.get(), defaultPollDelay.get(), defaultCatchUncaughtExceptions,
-        defaultExceptionIgnorer.get(), defaultConditionEvaluationListener.get(),
-        defaultExecutorLifecycle.get(), defaultFailFastCondition.get());
-    return new OrElseFactory(conditionFactory, defaultMaxAttempts.get(), defaultOrElseDo.get());
+    return new OrElseFactory(null,
+        defaultWaitConstraint.withMaxWaitTime(DurationFactory.of(value, unit)), defaultPollInterval,
+        defaultPollDelay, defaultCatchUncaughtExceptions, defaultExceptionIgnorer,
+        defaultConditionEvaluationListener, defaultExecutorLifecycle, defaultFailFastCondition,
+        defaultMaxAttempts, defaultOrElseDo);
   }
 
   /**
@@ -402,7 +383,7 @@ public class Elsetility
    */
   public static void setDefaultPollInterval(final long pollInterval, final TimeUnit unit)
   {
-    defaultPollInterval.set(new FixedPollInterval(DurationFactory.of(pollInterval, unit)));
+    defaultPollInterval = new FixedPollInterval(DurationFactory.of(pollInterval, unit));
   }
 
   /**
@@ -413,7 +394,7 @@ public class Elsetility
    */
   public static void setDefaultPollDelay(final long pollDelay, final TimeUnit unit)
   {
-    defaultPollDelay.set(DurationFactory.of(pollDelay, unit));
+    defaultPollDelay = DurationFactory.of(pollDelay, unit);
   }
 
   /**
@@ -424,9 +405,9 @@ public class Elsetility
    */
   public static void setDefaultTimeout(final long timeout, final TimeUnit unit)
   {
-    defaultWaitConstraint.set(
-        defaultWaitConstraint.get().withMaxWaitTime(DurationFactory.of(timeout, unit))
-    );
+    final WaitConstraint waitConstraint =
+        defaultWaitConstraint.withMaxWaitTime(DurationFactory.of(timeout, unit));
+    defaultWaitConstraint = waitConstraint;
   }
 
   /**
@@ -440,7 +421,7 @@ public class Elsetility
     {
       throw new IllegalArgumentException("You must specify a poll interval (was null).");
     }
-    defaultPollInterval.set(new FixedPollInterval(pollInterval));
+    defaultPollInterval = new FixedPollInterval(pollInterval);
   }
 
   /**
@@ -454,7 +435,7 @@ public class Elsetility
     {
       throw new IllegalArgumentException("You must specify a poll interval (was null).");
     }
-    defaultPollInterval.set(pollInterval);
+    defaultPollInterval = pollInterval;
   }
 
   /**
@@ -468,7 +449,7 @@ public class Elsetility
     {
       throw new IllegalArgumentException("You must specify a poll delay (was null).");
     }
-    defaultPollDelay.set(pollDelay);
+    defaultPollDelay = pollDelay;
   }
 
   /**
@@ -482,21 +463,21 @@ public class Elsetility
     {
       throw new IllegalArgumentException("You must specify a default timeout (was null).");
     }
-    defaultWaitConstraint.set(
-        defaultWaitConstraint.get().withMaxWaitTime(defaultTimeout)
-    );
+    final WaitConstraint waitConstraint = defaultWaitConstraint.withMaxWaitTime(defaultTimeout);
+    defaultWaitConstraint = waitConstraint;
   }
 
   /**
    * Sets the default condition evaluation listener that all await statements will use.
    *
-   * @param listener handles condition evaluation each time evaluation of a condition occurs. Works
-   *                 only with Hamcrest matcher-based conditions.
+   * @param defaultConditionEvaluationListener handles condition evaluation each time evaluation of
+   *                                           a condition occurs. Works only with Hamcrest
+   *                                           matcher-based conditions.
    */
   public static void setDefaultConditionEvaluationListener(
-      final ConditionEvaluationListener<?> listener)
+      final ConditionEvaluationListener defaultConditionEvaluationListener)
   {
-    defaultConditionEvaluationListener.set(listener);
+    Elsetility.defaultConditionEvaluationListener = defaultConditionEvaluationListener;
   }
 
   /**
@@ -506,12 +487,13 @@ public class Elsetility
    * specify a more descriptive error message then use {@link #setDefaultFailFastCondition(String,
    * Callable)}.
    *
-   * @param condition The terminal failure condition
+   * @param defaultFailFastCondition The terminal failure condition
    * @see #setDefaultFailFastCondition(String, Callable)
    */
-  public static void setDefaultFailFastCondition(final Callable<Boolean> condition)
+  public static void setDefaultFailFastCondition(final Callable<Boolean> defaultFailFastCondition)
   {
-    defaultFailFastCondition.set(new FailFastCondition(null, condition));
+    Elsetility.defaultFailFastCondition =
+        new FailFastCondition(null, defaultFailFastCondition);
   }
 
   /**
@@ -519,17 +501,18 @@ public class Elsetility
    * <i>never</i> be true, and if so fail the system immediately. Throws a {@link
    * TerminalFailureException} if fail fast condition evaluates to <code>true</code>.
    *
-   * @param condition The terminal failure condition
-   * @param reason    A descriptive reason why the fail fast condition has failed, will be included
-   *                  in the {@link TerminalFailureException} thrown if <code>failFastCondition</code>
-   *                  evaluates to
-   *                  <code>true</code>.
+   * @param defaultFailFastCondition The terminal failure condition
+   * @param failFastFailureReason    A descriptive reason why the fail fast condition has failed,
+   *                                 will be included in the {@link TerminalFailureException} thrown
+   *                                 if <code>failFastCondition</code> evaluates to
+   *                                 <code>true</code>.
    */
   public static void setDefaultFailFastCondition(
-      final String reason,
-      final Callable<Boolean> condition)
+      final String failFastFailureReason,
+      final Callable<Boolean> defaultFailFastCondition)
   {
-    Elsetility.defaultFailFastCondition.set(new FailFastCondition(reason, condition));
+    Elsetility.defaultFailFastCondition =
+        new FailFastCondition(failFastFailureReason, defaultFailFastCondition);
   }
 
   /**

@@ -1,13 +1,10 @@
 package com.rkoyanagui;
 
-import static com.rkoyanagui.Elsetility.instanceOfAnyOf;
 import static java.time.Duration.ofSeconds;
-import static org.awaitility.core.ConditionEvaluationLogger.conditionEvaluationLogger;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
@@ -15,29 +12,12 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.rkoyanagui.core.OrElseFactory;
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.awaitility.core.ConditionTimeoutException;
-import org.hamcrest.Matcher;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 class ElsetilityTest
 {
-  private static final Logger LOG = LoggerFactory.getLogger(ElsetilityTest.class);
-
-  @BeforeAll
-  static void setup()
-  {
-    Elsetility.setDefaultConditionEvaluationListener(
-        conditionEvaluationLogger(s -> LOG.debug(s))
-    );
-  }
-
   @Test
   void succeed()
   {
@@ -63,8 +43,8 @@ class ElsetilityTest
   void mismatch()
   {
     final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
-    final Matcher<String> matcher = not(emptyString());
-    assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> "", matcher));
+    assertThrows(ConditionTimeoutException.class,
+        () -> factory.until(() -> "", not(emptyString())));
   }
 
   @Test
@@ -83,7 +63,7 @@ class ElsetilityTest
   }
 
   @Test
-  void call_CorrectiveAction_AndReach_MaxAttempts()
+  void callOrElseDoAndReachMaxAttempts()
   {
     final AtomicInteger i = new AtomicInteger();
     final OrElseFactory factory = Elsetility.await()
@@ -95,7 +75,7 @@ class ElsetilityTest
   }
 
   @Test
-  void doNotCall_CorrectiveAction_IfOnlyOneAttempt()
+  void doNotCallOrElseDoIfOnlyOneAttempt()
   {
     final AtomicInteger i = new AtomicInteger();
     final OrElseFactory factory = Elsetility.await()
@@ -106,37 +86,37 @@ class ElsetilityTest
   }
 
   @Test
-  void call_CorrectiveAction_AndExpireTimeout()
+  void callOrElseDoAndExpireTimeout()
   {
     final AtomicInteger i = new AtomicInteger();
     final OrElseFactory factory = Elsetility.await()
         .given().unlimitedNumOfAttempts()
         .but().timeout(ofSeconds(1))
-        .orElseDo(() -> i.incrementAndGet());
+        .and().correctiveAction(() -> i.incrementAndGet());
     assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> false));
     assertThat(i.get(), is(greaterThan(0)));
   }
 
   @Test
-  void ignoreExceptionIn_Supplier()
+  void ignoreExceptionInSupplier()
   {
     final OrElseFactory factory = Elsetility.await()
         .given().maxNumOfAttempts(1)
         .and().ignoreExceptionsMatching(instanceOf(ArithmeticException.class));
-    final Matcher<Integer> matcher = is(equalTo(0));
-    assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> 1 / 0, matcher));
+    assertThrows(ConditionTimeoutException.class,
+        () -> factory.until(() -> 1 / 0, is(equalTo(0))));
   }
 
   @Test
-  void doNotIgnoreExceptionIn_Supplier()
+  void doNotIgnoreExceptionInSupplier()
   {
     final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
-    final Matcher<Integer> matcher = is(equalTo(0));
-    assertThrows(ArithmeticException.class, () -> factory.until(() -> 1 / 0, matcher));
+    assertThrows(ArithmeticException.class,
+        () -> factory.until(() -> 1 / 0, is(equalTo(0))));
   }
 
   @Test
-  void ignoreExceptionIn_CorrectiveAction()
+  void ignoreExceptionInOrElseDo()
   {
     final OrElseFactory factory = Elsetility.await()
         .given().maxNumOfAttempts(2)
@@ -145,12 +125,12 @@ class ElsetilityTest
         {
           int i = 1 / 0;
         });
-    final Matcher<Integer> matcher = is(equalTo(1));
-    assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> 0, matcher));
+    assertThrows(ConditionTimeoutException.class,
+        () -> factory.until(() -> 0, is(equalTo(1))));
   }
 
   @Test
-  void doNotIgnoreExceptionIn_CorrectiveAction()
+  void doNotIgnoreExceptionInOrElseDo()
   {
     final OrElseFactory factory = Elsetility.await()
         .given().maxNumOfAttempts(2)
@@ -158,31 +138,12 @@ class ElsetilityTest
         {
           int i = 1 / 0;
         });
-    final Matcher<Integer> matcher = is(equalTo(1));
-    assertThrows(ArithmeticException.class, () -> factory.until(() -> 0, matcher));
+    assertThrows(ArithmeticException.class,
+        () -> factory.until(() -> 0, is(equalTo(1))));
   }
 
   @Test
-  void ignoreExceptionIn_Supplier_OrIn_CorrectiveAction()
-  {
-    final Matcher<Throwable> ignoredExceptions = instanceOfAnyOf(
-        ArithmeticException.class,
-        NullPointerException.class
-    );
-    final OrElseFactory factory = Elsetility.await()
-        .given().maxNumOfAttempts(2)
-        .and().ignoreExceptionsMatching(ignoredExceptions)
-        .with().correctiveAction(() ->
-        {
-          int i = 1 / 0;
-        });
-    final String s = null;
-    final Matcher<Boolean> matcher = is(true);
-    assertThrows(ConditionTimeoutException.class, () -> factory.until(() -> s.isEmpty(), matcher));
-  }
-
-  @Test
-  void ignoreExceptionIn_Condition()
+  void ignoreExceptionInCondition()
   {
     final OrElseFactory factory = Elsetility.await()
         .given().maxNumOfAttempts(1)
@@ -191,19 +152,9 @@ class ElsetilityTest
   }
 
   @Test
-  void doNotIgnoreExceptionIn_Condition()
+  void doNotIgnoreExceptionInCondition()
   {
     final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
     assertThrows(ArithmeticException.class, () -> factory.until(() -> 1 / 0 == 0));
-  }
-
-  @Test
-  void awaitFixedDuration()
-  {
-    LocalDateTime t0 = LocalDateTime.now();
-    Elsetility.await(Duration.ofSeconds(1L));
-    LocalDateTime t1 = LocalDateTime.now();
-    long seconds = ChronoUnit.SECONDS.between(t0, t1);
-    assertThat(seconds, is(greaterThanOrEqualTo(1L)));
   }
 }

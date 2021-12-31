@@ -16,10 +16,14 @@ import java.util.concurrent.atomic.LongAccumulator;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import org.awaitility.constraint.WaitConstraint;
 import org.awaitility.core.ConditionEvaluationListener;
 import org.awaitility.core.ConditionFactory;
 import org.awaitility.core.ConditionTimeoutException;
 import org.awaitility.core.DurationFactory;
+import org.awaitility.core.ExceptionIgnorer;
+import org.awaitility.core.ExecutorLifecycle;
+import org.awaitility.core.FailFastCondition;
 import org.awaitility.core.TerminalFailureException;
 import org.awaitility.core.ThrowingRunnable;
 import org.awaitility.pollinterval.FixedPollInterval;
@@ -31,9 +35,10 @@ import org.hamcrest.Matcher;
  * <a href="https://github.com/awaitility/awaitility">Awaitility</a>. Adds some extra
  * functionality.
  */
+@SuppressWarnings("unused")
 public class OrElseFactory
 {
-  protected final ConditionFactory awaitilityFactory;
+  protected final ConditionFactory conditionFactory;
 
   /** The maximum number of attempts. */
   protected final Integer maxAttempts;
@@ -41,13 +46,49 @@ public class OrElseFactory
   /** The corrective action to take when a condition fails. */
   protected final Runnable correctiveAction;
 
+  /**
+   * Instantiates a new condition factory.
+   *
+   * @param alias                       the alias
+   * @param timeoutConstraint           the timeout constraint
+   * @param pollInterval                the poll interval
+   * @param pollDelay                   the poll delay
+   * @param catchUncaughtExceptions     whether to catch uncaught exceptions
+   * @param exceptionIgnorer            a mechanism to ignore exceptions
+   * @param conditionEvaluationListener the condition evaluation listener
+   * @param executorLifecycle           the executor lifecycle
+   * @param failFastCondition           the fail-fast condition
+   * @param maxAttempts                 the maximum number of attempts
+   * @param correctiveAction            the corrective action to take when a condition fails
+   */
+  public OrElseFactory(
+      final String alias,
+      final WaitConstraint timeoutConstraint,
+      final PollInterval pollInterval,
+      final Duration pollDelay,
+      final boolean catchUncaughtExceptions,
+      final ExceptionIgnorer exceptionIgnorer,
+      final ConditionEvaluationListener conditionEvaluationListener,
+      final ExecutorLifecycle executorLifecycle,
+      final FailFastCondition failFastCondition,
+      final Integer maxAttempts,
+      final Runnable correctiveAction)
+  {
+    verifyParams(maxAttempts, correctiveAction);
+    this.conditionFactory = new ConditionFactory(alias, timeoutConstraint, pollInterval, pollDelay,
+        catchUncaughtExceptions, exceptionIgnorer, conditionEvaluationListener, executorLifecycle,
+        failFastCondition);
+    this.maxAttempts = maxAttempts;
+    this.correctiveAction = correctiveAction;
+  }
+
   public OrElseFactory(
       final ConditionFactory conditionFactory,
       final Integer maxAttempts,
       final Runnable correctiveAction)
   {
     verifyParams(maxAttempts, correctiveAction);
-    this.awaitilityFactory = conditionFactory;
+    this.conditionFactory = conditionFactory;
     this.maxAttempts = maxAttempts;
     this.correctiveAction = correctiveAction;
   }
@@ -83,7 +124,7 @@ public class OrElseFactory
    */
   public OrElseFactory maxNumOfAttempts(final Integer maxAttempts)
   {
-    return new OrElseFactory(awaitilityFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
   /**
@@ -157,7 +198,7 @@ public class OrElseFactory
    */
   public OrElseFactory correctiveAction(final Runnable correctiveAction)
   {
-    return new OrElseFactory(awaitilityFactory, maxAttempts, correctiveAction);
+    return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
   /**
@@ -218,10 +259,10 @@ public class OrElseFactory
    * @return the condition factory
    */
   public OrElseFactory conditionEvaluationListener(
-      final ConditionEvaluationListener<?> conditionEvaluationListener)
+      final ConditionEvaluationListener conditionEvaluationListener)
   {
     final ConditionFactory conditionFactory =
-        this.awaitilityFactory.conditionEvaluationListener(conditionEvaluationListener);
+        this.conditionFactory.conditionEvaluationListener(conditionEvaluationListener);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -244,7 +285,7 @@ public class OrElseFactory
    */
   public OrElseFactory atMost(final Duration timeout)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.atMost(timeout);
+    final ConditionFactory conditionFactory = this.conditionFactory.atMost(timeout);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -256,7 +297,7 @@ public class OrElseFactory
    */
   public OrElseFactory during(final Duration timeout)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.during(timeout);
+    final ConditionFactory conditionFactory = this.conditionFactory.during(timeout);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -281,7 +322,7 @@ public class OrElseFactory
    */
   public OrElseFactory alias(final String alias)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.alias(alias);
+    final ConditionFactory conditionFactory = this.conditionFactory.alias(alias);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -294,7 +335,7 @@ public class OrElseFactory
    */
   public OrElseFactory atLeast(final Duration timeout)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.atLeast(timeout);
+    final ConditionFactory conditionFactory = this.conditionFactory.atLeast(timeout);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -352,7 +393,7 @@ public class OrElseFactory
    */
   public OrElseFactory forever()
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.forever();
+    final ConditionFactory conditionFactory = this.conditionFactory.forever();
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -371,7 +412,7 @@ public class OrElseFactory
    */
   public OrElseFactory pollInterval(final Duration pollInterval)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.pollInterval(pollInterval);
+    final ConditionFactory conditionFactory = this.conditionFactory.pollInterval(pollInterval);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -397,7 +438,7 @@ public class OrElseFactory
    */
   public OrElseFactory pollDelay(final long delay, final TimeUnit unit)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.pollDelay(delay, unit);
+    final ConditionFactory conditionFactory = this.conditionFactory.pollDelay(delay, unit);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -410,7 +451,7 @@ public class OrElseFactory
    */
   public OrElseFactory pollDelay(final Duration pollDelay)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.pollDelay(pollDelay);
+    final ConditionFactory conditionFactory = this.conditionFactory.pollDelay(pollDelay);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -444,13 +485,13 @@ public class OrElseFactory
   public OrElseFactory pollInterval(final long pollInterval, final TimeUnit unit)
   {
     final ConditionFactory conditionFactory =
-        this.awaitilityFactory.pollInterval(pollInterval, unit);
+        this.conditionFactory.pollInterval(pollInterval, unit);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
   public OrElseFactory pollInterval(final PollInterval pollInterval)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.pollInterval(pollInterval);
+    final ConditionFactory conditionFactory = this.conditionFactory.pollInterval(pollInterval);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -464,7 +505,7 @@ public class OrElseFactory
    */
   public OrElseFactory catchUncaughtExceptions()
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.catchUncaughtExceptions();
+    final ConditionFactory conditionFactory = this.conditionFactory.catchUncaughtExceptions();
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -481,7 +522,7 @@ public class OrElseFactory
   public OrElseFactory ignoreExceptionsInstanceOf(final Class<? extends Throwable> exceptionType)
   {
     final ConditionFactory conditionFactory =
-        this.awaitilityFactory.ignoreExceptionsInstanceOf(exceptionType);
+        this.conditionFactory.ignoreExceptionsInstanceOf(exceptionType);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -498,7 +539,7 @@ public class OrElseFactory
   public OrElseFactory ignoreException(final Class<? extends Throwable> exceptionType)
   {
     final ConditionFactory conditionFactory =
-        this.awaitilityFactory.ignoreException(exceptionType);
+        this.conditionFactory.ignoreException(exceptionType);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -538,7 +579,7 @@ public class OrElseFactory
   public OrElseFactory ignoreExceptionsMatching(final Matcher<? super Throwable> matcher)
   {
     final ConditionFactory conditionFactory =
-        this.awaitilityFactory.ignoreExceptionsMatching(matcher);
+        this.conditionFactory.ignoreExceptionsMatching(matcher);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -553,7 +594,7 @@ public class OrElseFactory
   public OrElseFactory ignoreExceptionsMatching(final Predicate<? super Throwable> predicate)
   {
     final ConditionFactory conditionFactory =
-        this.awaitilityFactory.ignoreExceptionsMatching(predicate);
+        this.conditionFactory.ignoreExceptionsMatching(predicate);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -579,7 +620,7 @@ public class OrElseFactory
    */
   public OrElseFactory await(final String alias)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.await(alias);
+    final ConditionFactory conditionFactory = this.conditionFactory.await(alias);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -644,9 +685,10 @@ public class OrElseFactory
    *
    * @return the condition factory
    */
+  @SuppressWarnings("SpellCheckingInspection")
   public OrElseFactory dontCatchUncaughtExceptions()
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.dontCatchUncaughtExceptions();
+    final ConditionFactory conditionFactory = this.conditionFactory.dontCatchUncaughtExceptions();
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -663,7 +705,7 @@ public class OrElseFactory
   public OrElseFactory pollExecutorService(final ExecutorService executorService)
   {
     final ConditionFactory conditionFactory =
-        this.awaitilityFactory.pollExecutorService(executorService);
+        this.conditionFactory.pollExecutorService(executorService);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -679,7 +721,7 @@ public class OrElseFactory
   public OrElseFactory pollThread(final Function<Runnable, Thread> threadSupplier)
   {
     final ConditionFactory conditionFactory =
-        this.awaitilityFactory.pollThread(threadSupplier);
+        this.conditionFactory.pollThread(threadSupplier);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -702,7 +744,7 @@ public class OrElseFactory
    */
   public OrElseFactory pollInSameThread()
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.pollInSameThread();
+    final ConditionFactory conditionFactory = this.conditionFactory.pollInSameThread();
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -718,7 +760,7 @@ public class OrElseFactory
    */
   public OrElseFactory failFast(final Callable<Boolean> failFastCondition)
   {
-    final ConditionFactory conditionFactory = this.awaitilityFactory.failFast(failFastCondition);
+    final ConditionFactory conditionFactory = this.conditionFactory.failFast(failFastCondition);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -738,7 +780,7 @@ public class OrElseFactory
       final Callable<Boolean> failFastCondition)
   {
     final ConditionFactory conditionFactory =
-        this.awaitilityFactory.failFast(failFastFailureReason, failFastCondition);
+        this.conditionFactory.failFast(failFastFailureReason, failFastCondition);
     return new OrElseFactory(conditionFactory, maxAttempts, correctiveAction);
   }
 
@@ -782,7 +824,7 @@ public class OrElseFactory
     final LongAdder counter = new LongAdder();
     final Callable<T> wrappedSupplier =
         CallableWrapper.wrap(supplier, correctiveAction, counter, maxAttempts);
-    return this.awaitilityFactory.until(wrappedSupplier, matcher);
+    return this.conditionFactory.until(wrappedSupplier, matcher);
   }
 
   /**
@@ -804,7 +846,7 @@ public class OrElseFactory
     final LongAdder counter = new LongAdder();
     final Callable<T> wrappedSupplier =
         CallableWrapper.wrap(supplier, correctiveAction, counter, maxAttempts);
-    return this.awaitilityFactory.until(wrappedSupplier, predicate);
+    return this.conditionFactory.until(wrappedSupplier, predicate);
   }
 
   /**
@@ -861,7 +903,7 @@ public class OrElseFactory
     final LongAdder counter = new LongAdder();
     final ThrowingRunnable wrappedAssertion =
         AssertionWrapper.wrap(assertion, correctiveAction, counter, maxAttempts);
-    this.awaitilityFactory.untilAsserted(wrappedAssertion);
+    this.conditionFactory.untilAsserted(wrappedAssertion);
   }
 
   /**
@@ -881,7 +923,7 @@ public class OrElseFactory
    */
   public Integer untilAtomic(final AtomicInteger atomic, final Matcher<? super Integer> matcher)
   {
-    return this.awaitilityFactory.untilAtomic(atomic, matcher);
+    return this.conditionFactory.untilAtomic(atomic, matcher);
   }
 
   /**
@@ -901,7 +943,7 @@ public class OrElseFactory
    */
   public Long untilAtomic(final AtomicLong atomic, final Matcher<? super Long> matcher)
   {
-    return this.awaitilityFactory.untilAtomic(atomic, matcher);
+    return this.conditionFactory.untilAtomic(atomic, matcher);
   }
 
   /**
@@ -920,7 +962,7 @@ public class OrElseFactory
    */
   public void untilAtomic(final AtomicBoolean atomic, final Matcher<? super Boolean> matcher)
   {
-    this.awaitilityFactory.untilAtomic(atomic, matcher);
+    this.conditionFactory.untilAtomic(atomic, matcher);
   }
 
   /**
@@ -932,7 +974,7 @@ public class OrElseFactory
    */
   public void untilTrue(final AtomicBoolean atomic)
   {
-    this.awaitilityFactory.untilTrue(atomic);
+    this.conditionFactory.untilTrue(atomic);
   }
 
   /**
@@ -944,7 +986,7 @@ public class OrElseFactory
    */
   public void untilFalse(final AtomicBoolean atomic)
   {
-    this.awaitilityFactory.untilFalse(atomic);
+    this.conditionFactory.untilFalse(atomic);
   }
 
   /**
@@ -963,7 +1005,7 @@ public class OrElseFactory
    */
   public void untilAdder(final LongAdder adder, final Matcher<? super Long> matcher)
   {
-    this.awaitilityFactory.untilAdder(adder, matcher);
+    this.conditionFactory.untilAdder(adder, matcher);
   }
 
   /**
@@ -982,7 +1024,7 @@ public class OrElseFactory
    */
   public void untilAdder(final DoubleAdder adder, final Matcher<? super Double> matcher)
   {
-    this.awaitilityFactory.untilAdder(adder, matcher);
+    this.conditionFactory.untilAdder(adder, matcher);
   }
 
   /**
@@ -1003,7 +1045,7 @@ public class OrElseFactory
       final LongAccumulator accumulator,
       final Matcher<? super Long> matcher)
   {
-    this.awaitilityFactory.untilAccumulator(accumulator, matcher);
+    this.conditionFactory.untilAccumulator(accumulator, matcher);
   }
 
   /**
@@ -1024,7 +1066,7 @@ public class OrElseFactory
       final DoubleAccumulator accumulator,
       final Matcher<? super Double> matcher)
   {
-    this.awaitilityFactory.untilAccumulator(accumulator, matcher);
+    this.conditionFactory.untilAccumulator(accumulator, matcher);
   }
 
   /**
@@ -1045,7 +1087,7 @@ public class OrElseFactory
    */
   public <V> V untilAtomic(final AtomicReference<V> atomic, final Matcher<? super V> matcher)
   {
-    return this.awaitilityFactory.untilAtomic(atomic, matcher);
+    return this.conditionFactory.untilAtomic(atomic, matcher);
   }
 
   /**
@@ -1079,6 +1121,6 @@ public class OrElseFactory
     final LongAdder counter = new LongAdder();
     final Callable<Boolean> wrappedCondition =
         CallableWrapper.wrap(conditionEvaluator, correctiveAction, counter, maxAttempts);
-    this.awaitilityFactory.until(wrappedCondition);
+    this.conditionFactory.until(wrappedCondition);
   }
 }
