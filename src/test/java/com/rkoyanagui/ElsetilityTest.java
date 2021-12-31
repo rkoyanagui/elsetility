@@ -7,6 +7,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
@@ -14,6 +15,9 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.rkoyanagui.core.OrElseFactory;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.awaitility.core.ConditionTimeoutException;
 import org.hamcrest.Matcher;
@@ -159,7 +163,7 @@ class ElsetilityTest
   }
 
   @Test
-  void ignoreExceptionIn_Supplier_OrIn_CorrectiveAction_()
+  void ignoreExceptionIn_Supplier_OrIn_CorrectiveAction()
   {
     final Matcher<Throwable> ignoredExceptions = instanceOfAnyOf(
         ArithmeticException.class,
@@ -191,5 +195,15 @@ class ElsetilityTest
   {
     final OrElseFactory factory = Elsetility.await().given().maxNumOfAttempts(1);
     assertThrows(ArithmeticException.class, () -> factory.until(() -> 1 / 0 == 0));
+  }
+
+  @Test
+  void awaitFixedDuration()
+  {
+    LocalDateTime t0 = LocalDateTime.now();
+    Elsetility.await(Duration.ofSeconds(1L));
+    LocalDateTime t1 = LocalDateTime.now();
+    long seconds = ChronoUnit.SECONDS.between(t0, t1);
+    assertThat(seconds, is(greaterThanOrEqualTo(1L)));
   }
 }

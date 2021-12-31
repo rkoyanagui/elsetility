@@ -1,19 +1,14 @@
 package com.rkoyanagui;
 
-import static java.time.Duration.ofMillis;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.anyOf;
-import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.instanceOf;
 
 import com.rkoyanagui.core.OrElseFactory;
 import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -86,7 +81,7 @@ public class Elsetility
 
   /** Default corrective action (initially, "do nothing"). */
   protected static ThreadLocal<Runnable> defaultOrElseDo =
-      ThreadLocal.withInitial(() -> (Runnable) () -> {});
+      ThreadLocal.withInitial(() -> () -> {});
 
   protected Elsetility()
   {
@@ -94,29 +89,17 @@ public class Elsetility
   }
 
   /**
-   * Holds a program's execution for a fixed number of seconds.
+   * Prevents the continuation of a program's execution for a fixed duration.
    *
-   * @param seconds number of seconds to wait
+   * @param duration duration to wait
    */
-  public static void await(final long seconds)
+  public static void await(Duration duration)
   {
-    final long pollDelay = 0L;
-    final long pollInterval = 1_000L;
-    final LongAdder counter = new LongAdder();
-    final ScheduledFuture<?> scheduledFuture = Executors.newSingleThreadScheduledExecutor()
-        .scheduleAtFixedRate(
-            () -> counter.increment(),
-            pollDelay,
-            pollInterval,
-            TimeUnit.MILLISECONDS);
-
     Awaitility.await()
-        .pollDelay(ofMillis(pollDelay))
-        .pollInterval(ofMillis(pollInterval))
+        .given()
+        .pollDelay(duration)
         .forever()
-        .untilAdder(counter, greaterThan(seconds));
-
-    scheduledFuture.cancel(true);
+        .until(() -> true);
   }
 
   /**
@@ -126,7 +109,7 @@ public class Elsetility
    */
   public static OrElseFactory await()
   {
-    return await(null);
+    return await((String) null);
   }
 
   /**
